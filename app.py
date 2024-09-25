@@ -1,54 +1,29 @@
 import tkinter as tk
-from tkinter import ttk
-from tkinter import filedialog
-from tkinter import messagebox
+from tkinter import ttk, filedialog, messagebox
 import subprocess
-import os
 import json
-import mysql.connector
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('MySQL Dump Tool')
         self.geometry('400x550')
-        self.style = ttk.Style()
-        # self.style.theme_use('bootstrap')
-
-        self.db_config = self.load_config()
-        self.db_connection = self.connect_to_database()
-
-        self.db_name = tk.StringVar()
-        self.output_file = tk.StringVar()
-        self.options = tk.IntVar()
-
-        self.create_widgets()
+        self.title("Database Dump Tool")
+        self.config_json = self.load_config()
 
     def load_config(self):
-        with open('config.json') as f:
-            config = json.load(f)
-        return config['database']
-    
-    def connect_to_database(self):
-        connection = mysql.connector.connect(
-            host=self.db_config['host'],
-            port=self.db_config['port'],
-            user=self.db_config['user'],
-            password=self.db_config['password'],
-            database=self.db_config['database'],
-            # charset="utf8mb4",  # Ensure utf8mb4 charset is used
-            collation="utf8mb4_unicode_ci"  # Use a compatible collation
-        )
-        return connection
+        with open('config.json', 'r') as f:
+            return json.load(f)
 
     def create_widgets(self):
-        ttk.Label(self, text='Database Name:').pack(pady=10)
-        ttk.Entry(self, textvariable=self.db_name).pack()
-
+        ttk.Label(self, text='Database:').pack(pady=10)
+        self.db_name = tk.StringVar()
+        self.db_name.set(self.config_json['configs'][0]['database']['database'])  # default value
+        db_options = [config['database']['database'] for config in self.config_json['configs']]
+        ttk.OptionMenu(self, self.db_name, *db_options).pack()
         ttk.Label(self, text='Output File:').pack(pady=10)
+        self.output_file = tk.StringVar()
         ttk.Entry(self, textvariable=self.output_file).pack()
         ttk.Button(self, text='Browse', command=self.browse_file).pack()
-
         ttk.Label(self, text='Options:').pack()
         options = [
             'Remove DEFINER',
@@ -75,10 +50,16 @@ class App(tk.Tk):
         self.output_file.set(filename)
 
     def dump_database(self):
-        # command = f"mariadb-dump -u root {self.db_name.get()} > {self.output_file.get()}"
-        password_option = f" -p{self.db_config['password']}" if self.db_config['password'] else ""
-        # command = f"mariadb-dump -h {self.db_config['host']} -u {self.db_config['user']}{password_option} {self.db_name.get()} > {self.output_file.get()}"
-        command = f"mariadb-dump -h {self.db_config['host']} -u {self.db_config['user']} {self.db_config['database']} > {self.output_file.get()}"
+        config = None
+        for c in self.config_json['configs']:
+            if c['database']['database'] == self.db_name.get():
+                config = c['database']
+                break
+        if config is None:
+            messagebox.showerror('Error', 'Database tidak ditemukan')
+            return
+        password_option = f" -p{config['password']}" if config['password'] else ""
+        command = f"mariadb-dump -h {config['host']} -u {config['user']} {config['database']} > {self.output_file.get()}"
         for i, option in enumerate(['--skip-add-locks --no-create-info',
                                     '--events',
                                     '--triggers',
@@ -91,21 +72,15 @@ class App(tk.Tk):
                                     '--single-transaction']):
             if self.checkboxes[i].get():
                 command += f" {option}"
-        # subprocess.run(command, shell=True)
-        # messagebox.showinfo('Success', 'Database dumped successfully!')
         try:
             subprocess.run(command, shell=True, check=True)
             messagebox.showinfo('Success', 'Database dumped successfully!')
         except subprocess.CalledProcessError as e:
-            # messagebox.showerror('Error', f'Database dump failed with error code {e.returncode} {str(e)}')
-
-            print(f"{ str(e) }")
-
             messagebox.showerror('Error', f'An error occurred: {str(e)}')
         except Exception as e:
             messagebox.showerror('Error', f'An error occurred: {str(e)}')
 
-
 if __name__ == '__main__':
     app = App()
+    app.create_widgets()
     app.mainloop()
